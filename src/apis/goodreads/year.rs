@@ -4,7 +4,7 @@ use fantoccini::{Client, Locator};
 use std::collections::HashMap;
 
 pub async fn scrape_years() -> Result<(), Box<dyn std::error::Error>> {
-    let mut results: HashMap<u16, Vec<String>> = HashMap::new();
+    let mut results: HashMap<i32, Vec<String>> = HashMap::new();
     let mut client = Client::new("http://localhost:9515").await.expect("failed to connect to WebDriver");
 
     for year in 1900..2021 {

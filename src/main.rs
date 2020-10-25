@@ -1,7 +1,5 @@
-mod apis;
-mod data;
-
 use std::env;
+use apocalyptic_literature_stats::apis;
 
 #[tokio::main]
 async fn main() {
@@ -11,7 +9,7 @@ async fn main() {
         None => println!("Specify a scrape target:\n\tshelf [shelf_name]\n\tpopular_by_year"),
         Some(target) => {
             match target.as_str() {
-                "shelf" => scrape_shelf(Some(target)).await,
+                "shelf" => scrape_shelf(args.get(2)).await,
                 "popular_by_year" => scrape_popular_by_year().await,
                 &_ => println!("No command found for {}", target)
             }
@@ -19,7 +17,7 @@ async fn main() {
     }
 }
 
-async fn scrape_shelf(shelf_name: Option<&str>) {
+async fn scrape_shelf(shelf_name: Option<&String>) {
     match shelf_name {
         None => println!("Specify a genre or shelf to scrape"),
         Some(shelf_name_string) => {

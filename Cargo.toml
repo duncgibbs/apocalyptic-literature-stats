@@ -13,3 +13,4 @@ fantoccini = "0.14.1"
 dotenv = "0.15.0"
 tokio = { version = "0.2.22", features = ["macros"] }
 serde_json = "1.0"
+csv = "1.1.3"

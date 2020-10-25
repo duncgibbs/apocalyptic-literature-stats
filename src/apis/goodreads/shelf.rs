@@ -29,6 +29,10 @@ pub async fn scrape_shelf(shelf_name: &str,) -> Result<(), Box<dyn std::error::E
         books.extend(book_results.1);
     }
 
+    for book in books.iter_mut() {
+        client = get_editions(client, book).await?;
+    }
+
     client.close().await?;
 
     match shelf_results.1 {
@@ -98,6 +102,10 @@ async fn scrape_shelf_page(mut client: Client, shelf_name: &str, page: u8) -> Re
         (?s:.)*published\ (?P<year_published>\d*)
     ")?;
 
+    let shelved_regex = Regex::new(r"(?x)
+        (?s:.)*\(shelved\ (?P<shelf_num>\d+)
+    ")?;
+
     let mut book_results: Vec<Book> = Vec::new();
 
     for (idx, mut book) in book_elements.into_iter().enumerate() {
@@ -110,7 +118,18 @@ async fn scrape_shelf_page(mut client: Client, shelf_name: &str, page: u8) -> Re
                     shelf_name,
                 )
             )?;
+        let book_url = book.find(Locator::Css("a.leftAlignedImage")).await?
+            .attr("href").await?.ok_or(
+                format!(
+                    "Error getting url for book '{}' on page '{}' on shelf '{}'",
+                    idx,
+                    page,
+                    shelf_name,
+                )
+            )?;
         let author = book.find(Locator::Css("a.authorName > span")).await?.html(true).await?;
+        let shelved_link = book.find(Locator::Css("a.smallText")).await?.html(true).await?;
+        let shelved_cap = shelved_regex.captures(&shelved_link).unwrap();
         let details_element = book.find(Locator::Css("div.left > span.greyText.smallText")).await?.html(true).await?;
         match details_regex.captures(&details_element) {
             None => {
@@ -125,6 +144,9 @@ async fn scrape_shelf_page(mut client: Client, shelf_name: &str, page: u8) -> Re
                     rating: details["rating"].parse()?,
                     num_ratings: num_ratings.parse()?,
                     year_published: details["year_published"].parse().unwrap_or(0),
+                    book_url: book_url,
+                    editions: Vec::new(),
+                    shelf_num: shelved_cap["shelf_num"].parse().unwrap_or(0),
                 });
             }
         };
@@ -151,6 +173,48 @@ async fn login(mut client: Client) -> Result<Client, Box<dyn std::error::Error>>
     client.wait_for_find(Locator::Css("input[type=\"submit\"]")).await?.click().await?;
 
     client.wait_for_find(Locator::Css("ul.personalNav")).await?;
+
+    Ok(client)
+}
+
+async fn get_editions(mut client: Client, book: &mut Book) -> Result<Client, Box<dyn std::error::Error>> {
+    println!("Getting editions for {}...", book.title);
+
+    client.goto(&book.book_url).await?;
+
+    let editions_link = client.wait_for_find(Locator::Css("div.otherEditionsActions > a")).await?;
+    editions_link.click().await?;
+
+    let mut next_page = true;
+
+    while next_page {
+        client.wait_for_find(Locator::Css("div.workEditions")).await?;
+
+        let mut edition_data_rows = client.find_all(Locator::Css("div.editionData > div.dataRow")).await?;
+
+        let year_regex = Regex::new(r"(?x)
+            (?s:.)*Published\ (?s:.)*(?P<year_published>\d{4})
+        ")?;
+
+        for idx in 0..edition_data_rows.len() {
+            let year_data = &edition_data_rows[idx].html(true).await?;
+            match year_regex.captures(&year_data) {
+                Some(year) => {
+                    book.editions.push(year["year_published"].parse()?);
+                },
+                _ => ()
+            };
+        }
+
+        match client.find(Locator::Css("a.next_page")).await {
+            Ok(next_page_button) => {
+                next_page_button.click().await?;
+            },
+            Err(_) => {
+                next_page = false;
+            }
+        };
+    }
 
     Ok(client)
 }
